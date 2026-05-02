@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
+import io
 
 # ---------- PAGE CONFIG ----------
 st.set_page_config(
@@ -38,8 +39,8 @@ text = {
         "student_parent": "Parent/Guardian Name",
         "student_contact": "Parent Contact",
         "student_add_btn": "Add Student",
-        "student_edit": "✏️ Edit Student",
-        "student_delete": "🗑️ Delete Student",
+        "student_edit": "✏️ Edit",
+        "student_delete": "🗑️ Delete",
         "student_id": "ID",
         "student_list": "Student List",
         "grades_title": "Grades Management",
@@ -69,6 +70,8 @@ text = {
         "fees_history": "Payment History",
         "fees_total_paid": "Total Paid",
         "fees_total_due": "Total Due",
+        "report_title": "📄 Student Grade Report",
+        "report_download": "Download Grade Report (CSV)",
         "back": "← Back",
         "edit": "Edit",
         "delete": "Delete",
@@ -126,6 +129,8 @@ text = {
         "fees_history": "Historique des paiements",
         "fees_total_paid": "Total payé",
         "fees_total_due": "Total dû",
+        "report_title": "📄 Rapport de notes",
+        "report_download": "Télécharger le rapport (CSV)",
         "back": "← Retour",
         "edit": "Modifier",
         "delete": "Supprimer",
@@ -183,6 +188,8 @@ text = {
         "fees_history": "Historial de pagos",
         "fees_total_paid": "Total pagado",
         "fees_total_due": "Total adeudado",
+        "report_title": "📄 Informe de calificaciones",
+        "report_download": "Descargar informe (CSV)",
         "back": "← Regresar",
         "edit": "Editar",
         "delete": "Eliminar",
@@ -196,9 +203,9 @@ def _(key):
 
 # ---------- INITIALISE DATA STORES (in‑memory) ----------
 if "students" not in st.session_state:
-    st.session_state.students = {}  # id -> {name, grade, parent, contact}
+    st.session_state.students = {}
     st.session_state.next_student_id = 1
-    # Add some demo students
+    # Demo students
     st.session_state.students[1] = {"name": "Marie Claire", "grade": "3rd Grade", "parent": "Jean Claire", "contact": "555-1234"}
     st.session_state.next_student_id = 2
     st.session_state.students[2] = {"name": "Jean Pierre", "grade": "5th Grade", "parent": "Marie Pierre", "contact": "555-5678"}
@@ -208,12 +215,12 @@ if "grades" not in st.session_state:
     st.session_state.grades = []  # list of dict: student_id, subject, score, date
 
 if "attendance" not in st.session_state:
-    st.session_state.attendance = []  # list of dict: student_id, date, status
+    st.session_state.attendance = []
 
 if "payments" not in st.session_state:
-    st.session_state.payments = []  # list of dict: student_id, amount, description, date
+    st.session_state.payments = []
 
-# ---------- CUSTOM CSS (LIGHT BLUE BACKGROUND FOR BOTH APP AND SIDEBAR) ----------
+# ---------- CUSTOM CSS (LIGHT BLUE BACKGROUND) ----------
 st.markdown("""
 <style>
     .stApp, [data-testid="stSidebar"] {
@@ -248,9 +255,6 @@ st.markdown("""
     h1, h2, h3 {
         color: #1e3c72;
     }
-    .sidebar .sidebar-content {
-        background: transparent;
-    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -266,23 +270,18 @@ if not st.session_state.authenticated:
             st.error(_("login_error"))
     st.stop()
 
-# ---------- LOGGED IN – SHOW MAIN INTERFACE ----------
+# ---------- LOGGED IN – MAIN INTERFACE ----------
 # Language selector in sidebar
-lang_options = {
-    "English": "en",
-    "Français": "fr",
-    "Español": "es"
-}
+lang_options = {"English": "en", "Français": "fr", "Español": "es"}
 selected_lang = st.sidebar.selectbox("🌐 Language", list(lang_options.keys()))
 st.session_state.lang = lang_options[selected_lang]
 
 # Sidebar navigation
 page = st.sidebar.radio(
     "",
-    [_("nav_students"), _("nav_grades"), _("nav_attendance"), _("nav_parent"), _("nav_fees")]
+    [_("nav_students"), _("nav_grades"), _("nav_attendance"), _("nav_parent"), _("nav_fees"), _("report_title")]
 )
 
-# Logout button
 if st.sidebar.button(_("logout_button"), use_container_width=True):
     st.session_state.authenticated = False
     st.rerun()
@@ -294,55 +293,47 @@ st.sidebar.markdown(f"*{_('built_by')}*")
 def get_student_name(student_id):
     return st.session_state.students.get(student_id, {}).get("name", "Unknown")
 
-# ---------- STUDENT REGISTRATION PAGE ----------
+# ---------- STUDENT REGISTRATION ----------
 if page == _("nav_students"):
     st.markdown(f"<div class='main-header'><h1>{_('student_title')}</h1></div>", unsafe_allow_html=True)
     
-    # Add new student
     with st.expander(_("student_add")):
         with st.form("add_student"):
             name = st.text_input(_("student_name"))
             grade = st.text_input(_("student_grade"))
             parent = st.text_input(_("student_parent"))
             contact = st.text_input(_("student_contact"))
-            submitted = st.form_submit_button(_("student_add_btn"))
-            if submitted and name:
-                new_id = st.session_state.next_student_id
-                st.session_state.students[new_id] = {
-                    "name": name, "grade": grade, "parent": parent, "contact": contact
-                }
-                st.session_state.next_student_id += 1
-                st.success(f"{name} added!")
-                st.rerun()
+            if st.form_submit_button(_("student_add_btn")):
+                if name:
+                    new_id = st.session_state.next_student_id
+                    st.session_state.students[new_id] = {"name": name, "grade": grade, "parent": parent, "contact": contact}
+                    st.session_state.next_student_id += 1
+                    st.rerun()
     
-    # Display student list with edit/delete
     st.subheader(_("student_list"))
     if st.session_state.students:
         for sid, data in st.session_state.students.items():
-            with st.container():
-                col1, col2, col3 = st.columns([3, 1, 1])
-                with col1:
-                    st.markdown(f"**ID {sid}:** {data['name']} – Grade {data['grade']} – Parent: {data['parent']} ({data['contact']})")
-                with col2:
-                    if st.button(_("edit"), key=f"edit_{sid}"):
-                        # Edit mode
-                        with st.form(key=f"edit_form_{sid}"):
-                            new_name = st.text_input(_("student_name"), value=data["name"])
-                            new_grade = st.text_input(_("student_grade"), value=data["grade"])
-                            new_parent = st.text_input(_("student_parent"), value=data["parent"])
-                            new_contact = st.text_input(_("student_contact"), value=data["contact"])
-                            if st.form_submit_button(_("save")):
-                                st.session_state.students[sid] = {"name": new_name, "grade": new_grade, "parent": new_parent, "contact": new_contact}
-                                st.rerun()
-                with col3:
-                    if st.button(_("delete"), key=f"del_{sid}"):
-                        del st.session_state.students[sid]
-                        # Optionally delete related records (grades, attendance, payments) – for demo we keep them
-                        st.rerun()
+            col1, col2, col3 = st.columns([3, 1, 1])
+            with col1:
+                st.markdown(f"**ID {sid}:** {data['name']} – Grade {data['grade']} – Parent: {data['parent']} ({data['contact']})")
+            with col2:
+                if st.button(_("edit"), key=f"edit_{sid}"):
+                    with st.form(key=f"edit_form_{sid}"):
+                        new_name = st.text_input(_("student_name"), value=data["name"])
+                        new_grade = st.text_input(_("student_grade"), value=data["grade"])
+                        new_parent = st.text_input(_("student_parent"), value=data["parent"])
+                        new_contact = st.text_input(_("student_contact"), value=data["contact"])
+                        if st.form_submit_button(_("save")):
+                            st.session_state.students[sid] = {"name": new_name, "grade": new_grade, "parent": new_parent, "contact": new_contact}
+                            st.rerun()
+            with col3:
+                if st.button(_("delete"), key=f"del_{sid}"):
+                    del st.session_state.students[sid]
+                    st.rerun()
     else:
-        st.info("No students yet. Add one above.")
+        st.info("No students yet.")
 
-# ---------- GRADES PAGE ----------
+# ---------- GRADES MANAGEMENT ----------
 elif page == _("nav_grades"):
     st.markdown(f"<div class='main-header'><h1>{_('grades_title')}</h1></div>", unsafe_allow_html=True)
     if not st.session_state.students:
@@ -362,7 +353,6 @@ elif page == _("nav_grades"):
                         "score": score,
                         "date": datetime.now().strftime("%Y-%m-%d")
                     })
-                    st.success("Grade added!")
                     st.rerun()
         
         st.subheader(_("grades_list"))
@@ -373,7 +363,7 @@ elif page == _("nav_grades"):
         else:
             st.info("No grades recorded for this student.")
 
-# ---------- ATTENDANCE PAGE ----------
+# ---------- ATTENDANCE (fixed duplicate key) ----------
 elif page == _("nav_attendance"):
     st.markdown(f"<div class='main-header'><h1>{_('attendance_title')}</h1></div>", unsafe_allow_html=True)
     if not st.session_state.students:
@@ -382,43 +372,23 @@ elif page == _("nav_attendance"):
         date_today = st.date_input(_("attendance_date"), datetime.today())
         date_str = date_today.strftime("%Y-%m-%d")
         
-        st.subheader(_("attendance_mark"))
-        for sid, data in st.session_state.students.items():
-            col1, col2 = st.columns([3, 1])
-            with col1:
-                st.write(f"**{data['name']}**")
-            with col2:
-                status = st.selectbox(_("attendance_status"), [_("attendance_present"), _("attendance_absent")], key=f"att_{sid}")
-                # Convert status text to internal code
-                status_code = "Present" if status == _("attendance_present") else "Absent"
-                # Save immediately? We'll use a button to save all at once
-        if st.button(_("attendance_save")):
-            # Clear today's attendance for these students before saving
-            st.session_state.attendance = [a for a in st.session_state.attendance if a["date"] != date_str]
+        # Use a form to avoid duplicate key issues
+        with st.form(key="attendance_form"):
+            st.subheader(_("attendance_mark"))
+            attendance_dict = {}
+            # Use a unique key prefix that includes the date to avoid collisions over different days
             for sid, data in st.session_state.students.items():
-                # Get the selected status from the session (we need to retrieve the widget values)
-                # This is a bit tricky – easier to use a form, but for simplicity we'll re‑evaluate
-                pass
-        # Better: use a form with a submit button
-        with st.form("attendance_form"):
-            attendance_data = {}
-            for sid, data in st.session_state.students.items():
-                status_choice = st.selectbox(
+                status = st.selectbox(
                     f"{data['name']}",
                     [_("attendance_present"), _("attendance_absent")],
-                    key=f"att_{sid}"
+                    key=f"att_{sid}_{date_str}"   # unique per student & date
                 )
-                attendance_data[sid] = "Present" if status_choice == _("attendance_present") else "Absent"
+                attendance_dict[sid] = "Present" if status == _("attendance_present") else "Absent"
             if st.form_submit_button(_("attendance_save")):
                 # Remove existing records for this date
                 st.session_state.attendance = [a for a in st.session_state.attendance if a["date"] != date_str]
-                for sid, status in attendance_data.items():
-                    st.session_state.attendance.append({
-                        "student_id": sid,
-                        "date": date_str,
-                        "status": status
-                    })
-                st.success("Attendance saved!")
+                for sid, status in attendance_dict.items():
+                    st.session_state.attendance.append({"student_id": sid, "date": date_str, "status": status})
                 st.rerun()
         
         st.subheader(_("attendance_view"))
@@ -437,13 +407,9 @@ elif page == _("nav_parent"):
     else:
         student_options = {sid: data["name"] for sid, data in st.session_state.students.items()}
         selected_sid = st.selectbox(_("parent_student"), list(student_options.keys()), format_func=lambda x: student_options[x])
-        student_data = st.session_state.students[selected_sid]
+        data = st.session_state.students[selected_sid]
+        st.markdown(f"**{data['name']}** – Grade {data['grade']}  \nParent: {data['parent']} – Contact: {data['contact']}")
         
-        # Show student info
-        st.markdown(f"**{student_data['name']}** – Grade {student_data['grade']}")
-        st.markdown(f"Parent: {student_data['parent']} – Contact: {student_data['contact']}")
-        
-        # Grades
         st.subheader(_("parent_grades"))
         grades = [g for g in st.session_state.grades if g["student_id"] == selected_sid]
         if grades:
@@ -452,7 +418,6 @@ elif page == _("nav_parent"):
         else:
             st.info("No grades available.")
         
-        # Attendance
         st.subheader(_("parent_attendance"))
         attendance = [a for a in st.session_state.attendance if a["student_id"] == selected_sid]
         if attendance:
@@ -470,7 +435,6 @@ elif page == _("nav_fees"):
         student_options = {sid: data["name"] for sid, data in st.session_state.students.items()}
         selected_sid = st.selectbox(_("fees_select"), list(student_options.keys()), format_func=lambda x: student_options[x])
         
-        # Record payment
         with st.form("add_payment"):
             amount = st.number_input(_("fees_amount"), min_value=0.0, step=10.0)
             desc = st.text_input(_("fees_description"))
@@ -482,11 +446,9 @@ elif page == _("nav_fees"):
                         "description": desc,
                         "date": datetime.now().strftime("%Y-%m-%d")
                     })
-                    st.success("Payment recorded!")
                     st.rerun()
         
-        # Calculate balance (demo: assume total due = 1000 per student, you can customise)
-        total_due = 1000.0  # fixed for demo
+        total_due = 1000.0
         student_payments = [p for p in st.session_state.payments if p["student_id"] == selected_sid]
         total_paid = sum(p["amount"] for p in student_payments)
         balance = total_due - total_paid
@@ -502,6 +464,37 @@ elif page == _("nav_fees"):
             st.dataframe(df_pay, use_container_width=True)
         else:
             st.info("No payment history.")
+
+# ---------- GRADE REPORT (NEW FEATURE) ----------
+elif page == _("report_title"):
+    st.markdown(f"<div class='main-header'><h1>{_('report_title')}</h1></div>", unsafe_allow_html=True)
+    if not st.session_state.students:
+        st.warning("No students in the system.")
+    else:
+        student_options = {sid: data["name"] for sid, data in st.session_state.students.items()}
+        selected_sid = st.selectbox(_("grades_select"), list(student_options.keys()), format_func=lambda x: student_options[x])
+        student_name = student_options[selected_sid]
+        
+        # Filter grades for this student
+        student_grades = [g for g in st.session_state.grades if g["student_id"] == selected_sid]
+        if student_grades:
+            df = pd.DataFrame(student_grades)[["subject", "score", "date"]]
+            st.dataframe(df, use_container_width=True)
+            
+            # Convert to CSV for download
+            csv_buffer = io.StringIO()
+            df.to_csv(csv_buffer, index=False)
+            csv_data = csv_buffer.getvalue()
+            
+            st.download_button(
+                label=_("report_download"),
+                data=csv_data,
+                file_name=f"grades_report_{student_name.replace(' ', '_')}.csv",
+                mime="text/csv",
+                key="download_grades"
+            )
+        else:
+            st.info("No grades recorded for this student.")
 
 # ---------- FOOTER ----------
 st.markdown(f"""
