@@ -77,6 +77,13 @@ text = {
         "delete": "Delete",
         "save": "Save",
         "cancel": "Cancel",
+        "sidebar_contact": "📞 Contact Us",
+        "sidebar_email": "✉️ deslandes78@gmail.com",
+        "sidebar_phone": "📱 (509)-47385663",
+        "sidebar_pricing_title": "💰 Software Pricing",
+        "sidebar_monthly": "📅 Monthly subscription: $99 USD / month",
+        "sidebar_full": "💎 Full package (one‑time): $2,499 USD",
+        "sidebar_note": "Includes source code, setup, and 1 year support",
     },
     "fr": {
         "login_title": "🔐 Connexion au Système de Gestion Scolaire",
@@ -136,6 +143,13 @@ text = {
         "delete": "Supprimer",
         "save": "Enregistrer",
         "cancel": "Annuler",
+        "sidebar_contact": "📞 Contactez‑nous",
+        "sidebar_email": "✉️ deslandes78@gmail.com",
+        "sidebar_phone": "📱 (509)-47385663",
+        "sidebar_pricing_title": "💰 Tarifs du logiciel",
+        "sidebar_monthly": "📅 Abonnement mensuel : 99 $US / mois",
+        "sidebar_full": "💎 Licence complète (unique) : 2 499 $US",
+        "sidebar_note": "Code source, installation et 1 an de support inclus",
     },
     "es": {
         "login_title": "🔐 Inicio de Sesión – Sistema de Gestión Escolar",
@@ -195,6 +209,13 @@ text = {
         "delete": "Eliminar",
         "save": "Guardar",
         "cancel": "Cancelar",
+        "sidebar_contact": "📞 Contáctenos",
+        "sidebar_email": "✉️ deslandes78@gmail.com",
+        "sidebar_phone": "📱 (509)-47385663",
+        "sidebar_pricing_title": "💰 Precios del software",
+        "sidebar_monthly": "📅 Suscripción mensual: $99 USD / mes",
+        "sidebar_full": "💎 Licencia completa (única): $2,499 USD",
+        "sidebar_note": "Incluye código fuente, instalación y 1 año de soporte",
     }
 }
 
@@ -282,6 +303,19 @@ page = st.sidebar.radio(
     [_("nav_students"), _("nav_grades"), _("nav_attendance"), _("nav_parent"), _("nav_fees"), _("report_title")]
 )
 
+# ---------- SIDEBAR CONTACT AND PRICING INFO ----------
+st.sidebar.markdown("---")
+st.sidebar.markdown(f"### {_('sidebar_contact')}")
+st.sidebar.markdown(_("sidebar_email"))
+st.sidebar.markdown(_("sidebar_phone"))
+st.sidebar.markdown("---")
+st.sidebar.markdown(f"### {_('sidebar_pricing_title')}")
+st.sidebar.markdown(_("sidebar_monthly"))
+st.sidebar.markdown(_("sidebar_full"))
+st.sidebar.caption(_("sidebar_note"))
+st.sidebar.markdown("---")
+
+# Logout button
 if st.sidebar.button(_("logout_button"), use_container_width=True):
     st.session_state.authenticated = False
     st.rerun()
@@ -372,20 +406,17 @@ elif page == _("nav_attendance"):
         date_today = st.date_input(_("attendance_date"), datetime.today())
         date_str = date_today.strftime("%Y-%m-%d")
         
-        # Use a form to avoid duplicate key issues
         with st.form(key="attendance_form"):
             st.subheader(_("attendance_mark"))
             attendance_dict = {}
-            # Use a unique key prefix that includes the date to avoid collisions over different days
             for sid, data in st.session_state.students.items():
                 status = st.selectbox(
                     f"{data['name']}",
                     [_("attendance_present"), _("attendance_absent")],
-                    key=f"att_{sid}_{date_str}"   # unique per student & date
+                    key=f"att_{sid}_{date_str}"
                 )
                 attendance_dict[sid] = "Present" if status == _("attendance_present") else "Absent"
             if st.form_submit_button(_("attendance_save")):
-                # Remove existing records for this date
                 st.session_state.attendance = [a for a in st.session_state.attendance if a["date"] != date_str]
                 for sid, status in attendance_dict.items():
                     st.session_state.attendance.append({"student_id": sid, "date": date_str, "status": status})
@@ -465,7 +496,7 @@ elif page == _("nav_fees"):
         else:
             st.info("No payment history.")
 
-# ---------- GRADE REPORT (NEW FEATURE) ----------
+# ---------- GRADE REPORT ----------
 elif page == _("report_title"):
     st.markdown(f"<div class='main-header'><h1>{_('report_title')}</h1></div>", unsafe_allow_html=True)
     if not st.session_state.students:
@@ -475,13 +506,11 @@ elif page == _("report_title"):
         selected_sid = st.selectbox(_("grades_select"), list(student_options.keys()), format_func=lambda x: student_options[x])
         student_name = student_options[selected_sid]
         
-        # Filter grades for this student
         student_grades = [g for g in st.session_state.grades if g["student_id"] == selected_sid]
         if student_grades:
             df = pd.DataFrame(student_grades)[["subject", "score", "date"]]
             st.dataframe(df, use_container_width=True)
             
-            # Convert to CSV for download
             csv_buffer = io.StringIO()
             df.to_csv(csv_buffer, index=False)
             csv_data = csv_buffer.getvalue()
